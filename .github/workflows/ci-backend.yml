@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔒 Security Analysis
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -44,7 +44,6 @@ jobs:
     permissions:
       contents: read
       security-events: write
-
     steps:
       - uses: actions/checkout@v4
 
@@ -54,10 +53,6 @@ jobs:
           project: 'E-Commerce-API'
           path: 'backend'
           format: 'SARIF'
-          out: 'reports'
-          args: >
-            --enable-retired
-            --exclude node_modules
         continue-on-error: true
 
       - name: Upload SARIF to GitHub Security
@@ -74,7 +69,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     steps:
       - uses: actions/checkout@v4
 
@@ -105,13 +99,12 @@ jobs:
   container-scan:
     needs: build
     runs-on: ubuntu-latest
-    name: 🐳 Container Security Scan
+    name: �� Container Security Scan
     permissions:
       contents: read
       security-events: write
-
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -141,7 +134,6 @@ jobs:
     needs: [build, container-scan]
     runs-on: ubuntu-latest
     name: ✅ Quality Gate
-
     steps:
       - name: Check build status
         run: echo "Quality gates passed successfully!"
