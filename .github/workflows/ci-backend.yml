@@ -41,6 +41,10 @@ jobs:
   dependency-check:
     runs-on: ubuntu-latest
     name: 📦 Dependency Analysis
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
       - uses: actions/checkout@v3
 
@@ -50,13 +54,14 @@ jobs:
           project: 'E-Commerce-API'
           path: 'backend'
           format: 'SARIF'
+          out: 'reports'
           args: >
             --enable-retired
             --exclude node_modules
         continue-on-error: true
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: reports/dependency-check-report.sarif
@@ -69,6 +74,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+
     steps:
       - uses: actions/checkout@v3
 
@@ -103,6 +109,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+
     steps:
       - uses: actions/checkout@v3
 
@@ -125,7 +132,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Trivy results to Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -134,7 +141,7 @@ jobs:
     needs: [build, container-scan]
     runs-on: ubuntu-latest
     name: ✅ Quality Gate
+
     steps:
       - name: Check build status
         run: echo "Quality gates passed successfully!"
-
