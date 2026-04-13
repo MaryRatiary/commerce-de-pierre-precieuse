@@ -20,12 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔒 Security Analysis
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
       - name: 🔐 Secret Scanning with Gitleaks
-        uses: gitleaks/gitleaks-action@v4
+        uses: gitleaks/gitleaks-action@v2
         continue-on-error: true
 
       - name: 🛡️ SAST with Semgrep
@@ -79,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
 
@@ -111,7 +111,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
