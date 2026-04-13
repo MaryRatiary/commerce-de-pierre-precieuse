@@ -1,0 +1,63 @@
+# Secrets & Credentials
+*.key
+*.pem
+.env
+.env.local
+.env.*.local
+secrets.json
+.aws/
+~/.ssh/
+
+# Build artifacts
+backend/bin/
+backend/obj/
+backend/publish/
+frontend/dist/
+frontend/node_modules/
+frontend/build/
+
+# Logs & Reports
+*.log
+logs/
+reports/
+coverage/
+.coverage
+htmlcov/
+gitleaks-report.json
+semgrep-*.json
+npm-audit-report.json
+trivy-results.sarif
+sbom-*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.vs/
+*.user
+*.suo
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Testing
+.pytest_cache/
+.nyc_output/
+junit.xml
+
+# CI/CD
+.github/workflows/*.local.yml
+.jenkins/secrets/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db

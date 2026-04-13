@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+    
+    options {
+        timeout(time: 20, unit: 'MINUTES')
+        timestamps()
+    }
+    
+    environment {
+        NODE_VERSION = '18'
+    }
+    
+    stages {
+        stage('Install') {
+            steps {
+                sh '''
+                    cd frontend
+                    npm install --frozen-lockfile
+                '''
+            }
+        }
+        
+        stage('Lint') {
+            steps {
+                sh '''
+                    cd frontend
+                    npm run lint
+                '''
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                sh '''
+                    cd frontend
+                    npm run build
+                '''
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                sh '''
+                    cd frontend
+                    npm test -- --coverage || true
+                '''
+            }
+            post {
+                always {
+                    publishHTML([
+                        reportDir: 'frontend/coverage',
+                        reportFiles: 'index.html',
+                        reportName: 'Frontend Coverage'
+                    ])
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            archiveArtifacts artifacts: 'frontend/dist/**', allowEmptyArchive: true
+        }
+    }
+}

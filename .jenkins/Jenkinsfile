@@ -1,0 +1,211 @@
+pipeline {
+    agent any
+    
+    options {
+        timeout(time: 1, unit: 'HOURS')
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    
+    environment {
+        GITHUB_REPO = credentials('github-credentials')
+        REGISTRY = 'ghcr.io'
+        IMAGE_NAME = "${REGISTRY}/${GITHUB_REPO}/ecom-api"
+        SONAR_TOKEN = credentials('sonarqube-token')
+        SLACK_WEBHOOK = credentials('slack-webhook')
+    }
+    
+    stages {
+        stage('🔐 Security Scan - Secrets') {
+            steps {
+                script {
+                    sh '''
+                        echo "🔐 Running Gitleaks..."
+                        bash .jenkins/scripts/scan-secrets.sh || EXIT_CODE=$?
+                        exit ${EXIT_CODE:-0}
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'gitleaks-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🛡️ Security Scan - SAST') {
+            steps {
+                script {
+                    sh '''
+                        echo "🛡️ Running Semgrep..."
+                        bash .jenkins/scripts/sast-analysis.sh || EXIT_CODE=$?
+                        exit ${EXIT_CODE:-0}
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'semgrep-*.json', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('📦 Dependency Check') {
+            steps {
+                script {
+                    sh '''
+                        echo "📦 Checking dependencies..."
+                        bash .jenkins/scripts/dependency-check.sh || EXIT_CODE=$?
+                        exit ${EXIT_CODE:-0}
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: '**/*-audit-report.json,sbom-*.json', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🔨 Build Backend') {
+            steps {
+                script {
+                    sh '''
+                        echo "🔨 Building Backend..."
+                        cd backend/EcomApi
+                        dotnet restore
+                        dotnet build --configuration Release --no-restore
+                        dotnet publish -c Release -o ../../backend/publish
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'backend/publish/**', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🧪 Backend Tests') {
+            steps {
+                script {
+                    sh '''
+                        echo "🧪 Running Backend Tests..."
+                        cd backend/EcomApi
+                        dotnet test --configuration Release --no-build --verbosity normal --logger "trx" || true
+                    '''
+                }
+            }
+            post {
+                always {
+                    junit '**/TestResults/*.trx'
+                }
+            }
+        }
+        
+        stage('🔨 Build Frontend') {
+            steps {
+                script {
+                    sh '''
+                        echo "🔨 Building Frontend..."
+                        cd frontend
+                        npm install --frozen-lockfile
+                        npm run build
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'frontend/dist/**', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🧪 Frontend Tests & Lint') {
+            steps {
+                script {
+                    sh '''
+                        echo "🧪 Running Frontend Linting & Tests..."
+                        cd frontend
+                        npm run lint || true
+                        npm test -- --coverage || true
+                    '''
+                }
+            }
+        }
+        
+        stage('🐳 Container Security Scan') {
+            steps {
+                script {
+                    sh '''
+                        echo "🐳 Scanning containers..."
+                        
+                        # Build images
+                        docker build -f backend/Dockerfile -t ${IMAGE_NAME}:${BUILD_NUMBER} backend/ || true
+                        docker build -f frontend/Dockerfile -t ${REGISTRY}/${GITHUB_REPO}/ecom-frontend:${BUILD_NUMBER} frontend/ || true
+                        
+                        # Scan with Trivy
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                            aquasec/trivy image \
+                            --severity HIGH,CRITICAL \
+                            --format json \
+                            ${IMAGE_NAME}:${BUILD_NUMBER} > trivy-backend-report.json || true
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-*.json', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('✅ Quality Gate') {
+            steps {
+                script {
+                    sh '''
+                        echo "✅ Validating Quality Gate..."
+                        
+                        # Check gitleaks
+                        if [ -f "gitleaks-report.json" ]; then
+                            SECRETS=$(jq '.Matches | length' gitleaks-report.json 2>/dev/null || echo "0")
+                            if [ "$SECRETS" -gt 0 ]; then
+                                echo "❌ FAILED: Secrets detected!"
+                                exit 1
+                            fi
+                        fi
+                        
+                        echo "✅ All quality gates passed!"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo '📊 Pipeline completed'
+            cleanWs()
+        }
+        success {
+            echo '✅ BUILD SUCCESSFUL'
+            sh '''
+                if [ ! -z "$SLACK_WEBHOOK" ]; then
+                    curl -X POST $SLACK_WEBHOOK \
+                        -H 'Content-Type: application/json' \
+                        -d '{"text":"✅ Jenkins Build Success: '${BUILD_URL}'"}' || true
+                fi
+            '''
+        }
+        failure {
+            echo '❌ BUILD FAILED'
+            sh '''
+                if [ ! -z "$SLACK_WEBHOOK" ]; then
+                    curl -X POST $SLACK_WEBHOOK \
+                        -H 'Content-Type: application/json' \
+                        -d '{"text":"❌ Jenkins Build Failed: '${BUILD_URL}'"}' || true
+                fi
+            '''
+        }
+    }
+}

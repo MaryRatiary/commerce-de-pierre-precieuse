@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+    
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+    
+    environment {
+        DOTNET_VERSION = '8.0'
+        CONFIGURATION = 'Release'
+    }
+    
+    stages {
+        stage('Build') {
+            steps {
+                sh '''
+                    cd backend/EcomApi
+                    dotnet restore
+                    dotnet build --configuration ${CONFIGURATION} --no-restore
+                '''
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                sh '''
+                    cd backend/EcomApi
+                    dotnet test --configuration ${CONFIGURATION} --no-build \
+                        --logger "trx" --collect:"XPlat Code Coverage"
+                '''
+            }
+            post {
+                always {
+                    junit '**/TestResults/*.trx'
+                    publishHTML([
+                        reportDir: 'backend/coverage',
+                        reportFiles: 'index.html',
+                        reportName: 'Code Coverage'
+                    ])
+                }
+            }
+        }
+        
+        stage('Publish') {
+            steps {
+                sh '''
+                    cd backend/EcomApi
+                    dotnet publish -c ${CONFIGURATION} -o ../../backend/publish
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            archiveArtifacts artifacts: 'backend/publish/**', allowEmptyArchive: true
+        }
+    }
+}

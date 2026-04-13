@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SonarQubeConfig>
+  <Project>
+    <Key>e-commerce-secure</Key>
+    <Name>E-Commerce Platform - Secure</Name>
+    <Description>CI/CD sécurisé pour plateforme e-commerce</Description>
+    <Visibility>private</Visibility>
+  </Project>
+
+  <QualityGates>
+    <Gate name="E-Commerce Security">
+      <Condition>
+        <Metric>coverage</Metric>
+        <Operator>is_less_than</Operator>
+        <Threshold>80</Threshold>
+        <Error>Coverage doit être >= 80%</Error>
+      </Condition>
+      <Condition>
+        <Metric>duplicated_lines_density</Metric>
+        <Operator>is_greater_than</Operator>
+        <Threshold>5</Threshold>
+        <Error>Duplication <= 5%</Error>
+      </Condition>
+      <Condition>
+        <Metric>security_rating</Metric>
+        <Operator>is_worse_than</Operator>
+        <Threshold>A</Threshold>
+        <Error>Security rating >= A</Error>
+      </Condition>
+      <Condition>
+        <Metric>security_hotspots_reviewed</Metric>
+        <Operator>is_less_than</Operator>
+        <Threshold>100</Threshold>
+        <Error>100% des hotspots doivent être reviewés</Error>
+      </Condition>
+      <Condition>
+        <Metric>vulnerabilities</Metric>
+        <Operator>is_greater_than</Operator>
+        <Threshold>0</Threshold>
+        <Error>0 vulnérabilités acceptées</Error>
+      </Condition>
+      <Condition>
+        <Metric>blocker_violations</Metric>
+        <Operator>is_greater_than</Operator>
+        <Threshold>0</Threshold>
+        <Error>0 violations blocker</Error>
+      </Condition>
+    </Gate>
+  </QualityGates>
+
+  <Rules>
+    <!-- OWASP Top 10 -->
+    <RuleSet id="owasp-top-10">
+      <Rule>CWE-79</Rule>  <!-- XSS -->
+      <Rule>CWE-89</Rule>  <!-- SQL Injection -->
+      <Rule>CWE-200</Rule> <!-- Information Exposure -->
+      <Rule>CWE-352</Rule> <!-- CSRF -->
+      <Rule>CWE-434</Rule> <!-- File Upload -->
+      <Rule>CWE-798</Rule> <!-- Hardcoded Credentials -->
+    </RuleSet>
+
+    <!-- CWE Top 25 -->
+    <RuleSet id="cwe-top-25">
+      <Rule>CWE-1104</Rule> <!-- Use of Unmaintained Third Party Components -->
+      <Rule>CWE-295</Rule>  <!-- Improper Certificate Validation -->
+      <Rule>CWE-311</Rule>  <!-- Missing Encryption -->
+      <Rule>CWE-327</Rule>  <!-- Use of Broken Cryptography -->
+      <Rule>CWE-330</Rule>  <!-- Use of Insufficiently Random Values -->
+    </RuleSet>
+
+    <!-- Backend (.NET) -->
+    <RuleSet id="csharp-security">
+      <Rule>S2092</Rule>  <!-- Using HTTPS -->
+      <Rule>S2076</Rule>  <!-- SQL Injection -->
+      <Rule>S3649</Rule>  <!-- XPath Injection -->
+      <Rule>S5693</Rule>  <!-- CORS Policy -->
+      <Rule>S4507</Rule>  <!-- Sensitive Data Exposure -->
+    </RuleSet>
+
+    <!-- Frontend (JavaScript/TypeScript) -->
+    <RuleSet id="javascript-security">
+      <Rule>S1192</Rule>  <!-- String Literals -->
+      <Rule>S2068</Rule>  <!-- Hardcoded Passwords -->
+      <Rule>S2201</Rule>  <!-- Unused Variables -->
+      <Rule>S3358</Rule>  <!-- Ternary Operators -->
+      <Rule>S5868</Rule>  <!-- Content Security Policy -->
+    </RuleSet>
+  </Rules>
+
+  <Analysis>
+    <Language>csharp</Language>
+    <Language>javascript</Language>
+    <Language>typescript</Language>
+    
+    <Inclusions>
+      <Pattern>backend/**</Pattern>
+      <Pattern>frontend/src/**</Pattern>
+    </Inclusions>
+    
+    <Exclusions>
+      <Pattern>**/node_modules/**</Pattern>
+      <Pattern>**/bin/**</Pattern>
+      <Pattern>**/obj/**</Pattern>
+      <Pattern>**/dist/**</Pattern>
+      <Pattern>**/*.test.*</Pattern>
+      <Pattern>**/*.spec.*</Pattern>
+    </Exclusions>
+  </Analysis>
+
+  <Security>
+    <HotSpots>
+      <Enabled>true</Enabled>
+      <ReviewPercentage>100</ReviewPercentage>
+    </HotSpots>
+    
+    <VulnerabilityTracking>
+      <Enabled>true</Enabled>
+      <MaxAcceptedRisk>LOW</MaxAcceptedRisk>
+    </VulnerabilityTracking>
+  </Security>
+
+  <Notifications>
+    <OnQualityGateFail>true</OnQualityGateFail>
+    <OnNewIssues>true</OnNewIssues>
+    <OnSecurityHotspot>true</OnSecurityHotspot>
+    <Channel>github-check-run</Channel>
+  </Notifications>
+</SonarQubeConfig>

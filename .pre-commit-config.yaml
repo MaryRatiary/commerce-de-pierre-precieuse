@@ -1,0 +1,63 @@
+repos:
+  # Gitleaks - Secret scanning
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+        name: Gitleaks Secret Scanner
+        entry: gitleaks detect --source . --verbose --redact
+        language: system
+        stages: [commit]
+        pass_filenames: false
+
+  # Semgrep - SAST
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.45.0
+    hooks:
+      - id: semgrep
+        name: Semgrep SAST
+        entry: semgrep --config=p/owasp-top-ten --config=p/cwe-top-25
+        language: system
+        stages: [commit]
+        types: [python, javascript, typescript, csharp]
+
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trim Trailing Whitespace
+      - id: end-of-file-fixer
+        name: Fix End of File
+      - id: check-yaml
+        name: Check YAML
+        args: [--unsafe]
+      - id: check-json
+        name: Check JSON
+      - id: check-added-large-files
+        name: Check Large Files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+        name: Check Merge Conflicts
+
+  # YAML formatting
+  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+    rev: v2.9.0
+    hooks:
+      - id: pretty-format-yaml
+        name: Format YAML
+        args: [--autofix]
+
+  # Markdown linting
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.16
+    hooks:
+      - id: mdformat
+        name: Format Markdown
+        additional_dependencies: [mdformat-gfm]
+
+ci:
+  autofix_commit_msg: 'ci: auto-fix pre-commit hooks'
+  autofix_prs: true
+  autoupdate_commit_msg: 'ci: update pre-commit hooks'
+  autoupdate_schedule: weekly
