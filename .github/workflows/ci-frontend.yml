@@ -13,14 +13,14 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/ecom-frontend
+  IMAGE_NAME: ${{ github.repository_owner }}/commerce-de-pierre-precieuse/ecom-frontend
 
 jobs:
   security-scan:
     runs-on: ubuntu-latest
     name: 🔒 Frontend Security
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -41,10 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     name: 📦 NPM Dependencies
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -67,10 +67,10 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔨 Build Frontend
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
@@ -100,7 +100,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -121,7 +121,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Trivy to Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-results.sarif
