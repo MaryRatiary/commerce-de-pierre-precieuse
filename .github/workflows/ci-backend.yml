@@ -138,5 +138,3 @@ jobs:
       - name: Check build status
         run: echo "Quality gates passed successfully!"
 
-outputs:
-  image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
