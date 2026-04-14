@@ -9,8 +9,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/ecom-api
-  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/ecom-frontend
+  BACKEND_IMAGE: ghcr.io/maryratiary/commerce-de-pierre-precieuse/ecom-api
+  FRONTEND_IMAGE: ghcr.io/maryratiary/commerce-de-pierre-precieuse/ecom-frontend
 
 jobs:
   sign-backend:
