@@ -1,0 +1,301 @@
+🚀 GUIDE DE CONFIGURATION - DÉPLOIEMENT AUTOMATISÉ
+
+Ce guide explique comment configurer votre déploiement automatisé via GitHub Actions
+sans Docker local. Tout se fait en ligne !
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ÉTAPE 1️⃣ : CONFIGURER LES SECRETS GITHUB
+═══════════════════════════════════════════════════════════════════════════════
+
+Allez sur : GitHub Repository → Settings → Secrets and variables → Actions
+
+Créez ces secrets (copier/coller les valeurs) :
+
+1. DEPLOY_SSH_KEY
+   - Valeur: Votre clé SSH privée (contenu de ~/.ssh/id_rsa)
+   - Comment générer:
+     ssh-keygen -t ed25519 -f ~/.ssh/deploy_key -N ""
+     cat ~/.ssh/deploy_key
+
+2. DEPLOY_HOST
+   - Valeur: L'adresse IP ou domaine de votre serveur
+   - Exemple: 192.168.1.100 ou deploy.example.com
+
+3. DEPLOY_USER
+   - Valeur: L'utilisateur SSH sur votre serveur
+   - Exemple: ubuntu ou root
+
+4. JWT_SECRET
+   - Valeur: Une clé secrète pour les JWT tokens
+   - Comment générer:
+     openssl rand -base64 32
+
+5. DB_USER
+   - Valeur: Utilisateur PostgreSQL
+   - Exemple: ecom_user
+
+6. DB_PASSWORD
+   - Valeur: Mot de passe PostgreSQL sécurisé
+   - Comment générer:
+     openssl rand -base64 16
+
+7. DB_NAME
+   - Valeur: Nom de la base de données
+   - Exemple: ecom_db
+
+8. DOMAIN_NAME
+   - Valeur: Votre domaine (sans https://)
+   - Exemple: api.example.com
+
+9. SLACK_WEBHOOK (OPTIONNEL)
+   - Valeur: URL webhook Slack pour les notifications
+   - Obtenir sur: https://api.slack.com/apps/
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ÉTAPE 2️⃣ : PRÉPARER LE SERVEUR
+═══════════════════════════════════════════════════════════════════════════════
+
+Sur votre serveur (VPS, AWS, DigitalOcean, etc.):
+
+1. Se connecter au serveur:
+   ssh your_user@your_server_ip
+
+2. Installer Docker et Docker Compose:
+   sudo apt update && sudo apt upgrade -y
+   sudo apt install -y docker.io docker-compose git
+
+3. Ajouter l'utilisateur au groupe docker:
+   sudo usermod -aG docker $USER
+   newgrp docker
+
+4. Créer le dossier d'application:
+   mkdir -p ~/ecom-app
+   cd ~/ecom-app
+
+5. Autoriser la clé SSH publique:
+   cat ~/.ssh/deploy_key.pub >> ~/.ssh/authorized_keys
+   chmod 600 ~/.ssh/authorized_keys
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ÉTAPE 3️⃣ : CONFIGURER NGINX (OPTIONNEL - MAIS RECOMMANDÉ)
+═══════════════════════════════════════════════════════════════════════════════
+
+Pour avoir HTTPS et un reverse proxy :
+
+1. Installer Nginx et Certbot:
+   sudo apt install -y nginx certbot python3-certbot-nginx
+
+2. Créer la config Nginx:
+   sudo nano /etc/nginx/sites-available/default
+
+   Ajouter:
+   ---
+   upstream backend {
+       server localhost:5000;
+   }
+
+   upstream frontend {
+       server localhost:3000;
+   }
+
+   server {
+       listen 80;
+       server_name your-domain.com;
+       return 301 https://$server_name$request_uri;
+   }
+
+   server {
+       listen 443 ssl http2;
+       server_name your-domain.com;
+
+       ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+       ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+       location / {
+           proxy_pass http://frontend;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+       }
+
+       location /api {
+           proxy_pass http://backend;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       }
+   }
+   ---
+
+3. Activer la config:
+   sudo nginx -t
+   sudo systemctl restart nginx
+
+4. Générer le certificat SSL:
+   sudo certbot certonly --nginx -d your-domain.com
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ÉTAPE 4️⃣ : DÉCLENCHER LE DÉPLOIEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+OPTIONS DE DÉPLOIEMENT :
+
+Option A: Automatique (recommandé)
+─────────────────────────────────
+Le workflow se déclenche automatiquement quand vous faites un "push" sur la
+branche "main":
+
+   git add .
+   git commit -m "Deploy: new features"
+   git push origin main
+
+   → GitHub Actions se déclenche automatiquement
+   → Images buildées et pushées à GHCR
+   → Déploiement sur le serveur
+
+Option B: Manuel
+────────────────
+Allez sur: GitHub Repository → Actions → "Build & Deploy to Production" 
+         → "Run workflow"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ÉTAPE 5️⃣ : VÉRIFIER LE DÉPLOIEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Voir les logs du workflow:
+   GitHub → Actions → Cliquez sur le workflow en cours
+
+2. Vérifier les containers sur le serveur:
+   ssh your_user@your_server_ip
+   cd ~/ecom-app
+   docker-compose ps
+
+3. Voir les logs des services:
+   docker-compose logs -f backend
+   docker-compose logs -f frontend
+   docker-compose logs -f postgres
+
+4. Tester l'API:
+   curl http://localhost:5000/health
+
+5. Tester le Frontend:
+   curl http://localhost:3000
+
+═══════════════════════════════════════════════════════════════════════════════
+
+COMMANDES UTILES SUR LE SERVEUR
+═══════════════════════════════════════════════════════════════════════════════
+
+# Voir les containers en cours d'exécution
+docker-compose ps
+
+# Voir les logs en temps réel
+docker-compose logs -f
+
+# Voir les logs d'un service spécifique
+docker-compose logs -f backend
+docker-compose logs -f frontend
+docker-compose logs -f postgres
+
+# Arrêter tous les services
+docker-compose down
+
+# Redémarrer les services
+docker-compose restart
+
+# Mettre à jour et redéployer (après un push)
+cd ~/ecom-app
+git pull
+docker-compose pull
+docker-compose up -d
+
+# Voir les volumes et données
+docker volume ls
+docker volume inspect ecom-app_postgres_data
+
+# Sauvegarde de la base de données
+docker-compose exec postgres pg_dump -U ecom_user ecom_db > backup.sql
+
+# Restaurer la base de données
+cat backup.sql | docker-compose exec -T postgres psql -U ecom_user -d ecom_db
+
+# Nettoyer les images/containers inutilisés
+docker image prune -a
+docker container prune
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+❌ Erreur : "ssh: permission denied"
+   Solution:
+   - Vérifier que la clé privée est bien dans DEPLOY_SSH_KEY
+   - Vérifier que la clé publique est dans ~/.ssh/authorized_keys sur le serveur
+   - Tester: ssh -i ~/.ssh/deploy_key user@host
+
+❌ Erreur : "docker-compose: command not found"
+   Solution:
+   - Installer docker-compose: apt install docker-compose
+   - Ou utiliser: docker compose (sans tiret)
+
+❌ Erreur : "Container exited with code 1"
+   Solution:
+   - Voir les logs: docker-compose logs backend
+   - Vérifier les secrets: cat .env
+   - Vérifier la connexion à la BD
+
+❌ Erreur : "GHCR login failed"
+   Solution:
+   - Le secret GITHUB_TOKEN est automatique (pas à ajouter)
+   - S'il y a un problème, créer un PAT:
+     https://github.com/settings/tokens
+
+❌ Erreur : "Database migration failed"
+   Solution:
+   - Vérifier que PostgreSQL est running: docker-compose ps
+   - Vérifier les logs: docker-compose logs postgres
+   - Réinitialiser: docker-compose down -v && docker-compose up -d
+
+═══════════════════════════════════════════════════════════════════════════════
+
+PROCHAINES ÉTAPES OPTIONNELLES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Health Checks
+   - Ajouter des endpoints /health sur le backend
+   - Monitorer les métriques
+
+2. Backups Automatisés
+   - Ajouter un cron job pour backup PostgreSQL
+   - Stocker sur S3 ou autre cloud
+
+3. Monitoring & Alertes
+   - Utiliser Prometheus + Grafana
+   - Configurer des alertes Slack
+
+4. SSL/TLS
+   - Configurer Let's Encrypt (Certbot)
+   - Auto-renewal avec Nginx
+
+5. Firewall
+   - Ouvrir les ports: 22 (SSH), 80 (HTTP), 443 (HTTPS)
+   - Bloquer les autres ports
+
+═══════════════════════════════════════════════════════════════════════════════
+
+SUPPORT
+═══════════════════════════════════════════════════════════════════════════════
+
+Pour des questions:
+- GitHub Issues: https://github.com/YOUR_USERNAME/e-com/issues
+- Documentation Docker Compose: https://docs.docker.com/compose/
+- Documentation GitHub Actions: https://docs.github.com/en/actions
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Version: 1.0 | Date: 14 Avril 2026

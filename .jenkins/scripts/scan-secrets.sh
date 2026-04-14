@@ -1,34 +1,44 @@
 #!/bin/bash
 set -e
 
-echo "🔐 Starting Secret Scanning with Gitleaks..."
+echo "🔐 Running Gitleaks - Secrets Detection"
+echo "======================================="
 
-GITLEAKS_VERSION="8.18.0"
-GITLEAKS_BIN="gitleaks"
-
-# Download gitleaks if not installed
-if ! command -v $GITLEAKS_BIN &> /dev/null; then
-    echo "📦 Installing Gitleaks $GITLEAKS_VERSION..."
-    wget -q "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks-linux-x64" -O $GITLEAKS_BIN
-    chmod +x $GITLEAKS_BIN
+# Install Gitleaks if not present
+if ! command -v gitleaks &> /dev/null; then
+    echo "Installing Gitleaks..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        brew install gitleaks
+    else
+        curl -L https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks-linux-x64 -o gitleaks
+        chmod +x gitleaks
+        sudo mv gitleaks /usr/local/bin/
+    fi
 fi
 
-# Run gitleaks
-$GITLEAKS_BIN detect --source . \
-    --report-path gitleaks-report.json \
+# Run Gitleaks
+gitleaks detect \
+    --source . \
+    --verbose \
     --report-format json \
-    --exit-code 0 || true
+    --report-path gitleaks-report.json || EXIT_CODE=$?
 
 # Parse results
 if [ -f "gitleaks-report.json" ]; then
-    MATCHES=$(jq '.Matches | length' gitleaks-report.json 2>/dev/null || echo "0")
+    SECRETS=$(jq '.Matches | length' gitleaks-report.json 2>/dev/null || echo "0")
+    echo ""
+    echo "📊 Results: Found ${SECRETS} potential secrets"
     
-    if [ "$MATCHES" -gt 0 ]; then
-        echo "⚠️  WARNING: Found $MATCHES potential secrets!"
-        jq '.Matches[] | {File: .File, Secret: .Secret, Match: .Match}' gitleaks-report.json
+    if [ "$SECRETS" -gt 0 ]; then
+        echo ""
+        echo "⚠️  Detected secrets:"
+        jq '.Matches[] | "\(.File): \(.Match)"' gitleaks-report.json
         exit 1
     else
         echo "✅ No secrets detected!"
-        exit 0
     fi
+else
+    echo "✅ Scan completed successfully"
 fi
+
+exit ${EXIT_CODE:-0}

@@ -1,0 +1,291 @@
+pipeline {
+    agent none
+    
+    options {
+        timeout(time: 2, unit: 'HOURS')
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        disableConcurrentBuilds()
+    }
+    
+    environment {
+        // GitHub Configuration
+        GH_TOKEN = credentials('github-token')
+        GH_REPO = 'RatiaryMario/e-com'
+        GH_OWNER = 'RatiaryMario'
+        
+        // Registry Configuration
+        REGISTRY = 'ghcr.io'
+        REGISTRY_USER = credentials('ghcr-username')
+        REGISTRY_TOKEN = credentials('ghcr-token')
+        
+        // Container Images
+        API_IMAGE = "${REGISTRY}/${GH_OWNER}/ecom-api"
+        FRONTEND_IMAGE = "${REGISTRY}/${GH_OWNER}/ecom-frontend"
+        
+        // Security & Quality
+        SONAR_TOKEN = credentials('sonarqube-token')
+        SONAR_HOST = credentials('sonarqube-host')
+        
+        // Build Info
+        BUILD_VERSION = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
+        BUILD_TIMESTAMP = sh(script: 'date -u +"%Y-%m-%dT%H:%M:%SZ"', returnStdout: true).trim()
+    }
+    
+    triggers {
+        githubPush()
+    }
+    
+    stages {
+        stage('🔍 Checkout & Prepare') {
+            agent any
+            steps {
+                checkout scm
+                sh '''
+                    echo "📋 Build Info:"
+                    echo "  Version: ${BUILD_VERSION}"
+                    echo "  Commit: $(git rev-parse --short HEAD)"
+                    echo "  Branch: $(git rev-parse --abbrev-ref HEAD)"
+                '''
+            }
+        }
+        
+        stage('🔐 Security: Secrets Scan') {
+            agent any
+            steps {
+                sh '''
+                    echo "🔐 Scanning for secrets with Gitleaks..."
+                    bash .jenkins/scripts/scan-secrets.sh || true
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'gitleaks-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('��️ Security: SAST Analysis') {
+            agent any
+            parallel {
+                stage('Semgrep') {
+                    steps {
+                        sh '''
+                            echo "🛡️ Running Semgrep SAST..."
+                            bash .jenkins/scripts/sast-analysis.sh || true
+                        '''
+                    }
+                }
+                stage('SonarQube') {
+                    steps {
+                        sh '''
+                            echo "📊 Running SonarQube analysis..."
+                            bash .jenkins/scripts/sonarqube-scan.sh || true
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('📦 Dependencies: Audit & SBOM') {
+            agent any
+            steps {
+                sh '''
+                    echo "📦 Auditing dependencies..."
+                    bash .jenkins/scripts/dependency-check.sh || true
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: '*-audit-report.json,sbom-*.json', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🔨 Build: Backend & Frontend') {
+            agent any
+            parallel {
+                stage('Backend') {
+                    steps {
+                        sh '''
+                            echo "🔨 Building Backend..."
+                            cd backend
+                            dotnet restore --no-cache
+                            dotnet build --configuration Release --no-restore
+                            dotnet publish -c Release -o publish
+                        '''
+                    }
+                }
+                stage('Frontend') {
+                    steps {
+                        sh '''
+                            echo "🔨 Building Frontend..."
+                            cd frontend
+                            npm install --frozen-lockfile
+                            npm run build
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'backend/publish/**,frontend/dist/**', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🧪 Tests: Backend & Frontend') {
+            agent any
+            parallel {
+                stage('Backend Tests') {
+                    steps {
+                        sh '''
+                            echo "🧪 Testing Backend..."
+                            cd backend
+                            dotnet test --configuration Release --verbosity normal --logger "trx" || true
+                        '''
+                    }
+                }
+                stage('Frontend Tests') {
+                    steps {
+                        sh '''
+                            echo "🧪 Testing Frontend..."
+                            cd frontend
+                            npm test -- --coverage || true
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    junit '**/TestResults/*.trx', allowEmptyArchive: true
+                    archiveArtifacts artifacts: '**/coverage/**', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('🐳 Build: Docker Images') {
+            agent any
+            steps {
+                sh '''
+                    echo "🐳 Building Docker images..."
+                    
+                    docker build \
+                        -f backend/Dockerfile \
+                        -t ${API_IMAGE}:${BUILD_VERSION} \
+                        -t ${API_IMAGE}:latest \
+                        --build-arg BUILD_DATE=${BUILD_TIMESTAMP} \
+                        --build-arg VCS_REF=$(git rev-parse HEAD) \
+                        --build-arg VERSION=${BUILD_VERSION} \
+                        backend/
+                    
+                    docker build \
+                        -f frontend/Dockerfile \
+                        -t ${FRONTEND_IMAGE}:${BUILD_VERSION} \
+                        -t ${FRONTEND_IMAGE}:latest \
+                        --build-arg BUILD_DATE=${BUILD_TIMESTAMP} \
+                        --build-arg VCS_REF=$(git rev-parse HEAD) \
+                        --build-arg VERSION=${BUILD_VERSION} \
+                        frontend/
+                    
+                    echo "✅ Docker images built"
+                '''
+            }
+        }
+        
+        stage('🔍 Container Security Scan') {
+            agent any
+            parallel {
+                stage('Trivy - Backend') {
+                    steps {
+                        sh '''
+                            echo "�� Scanning Backend image..."
+                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                                aquasec/trivy image \
+                                --severity CRITICAL,HIGH \
+                                --format json \
+                                --output trivy-backend.json \
+                                ${API_IMAGE}:${BUILD_VERSION} || true
+                        '''
+                    }
+                }
+                stage('Trivy - Frontend') {
+                    steps {
+                        sh '''
+                            echo "🔍 Scanning Frontend image..."
+                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                                aquasec/trivy image \
+                                --severity CRITICAL,HIGH \
+                                --format json \
+                                --output trivy-frontend.json \
+                                ${FRONTEND_IMAGE}:${BUILD_VERSION} || true
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-*.json', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('✅ Quality Gate Check') {
+            agent any
+            steps {
+                sh '''
+                    echo "✅ Validating Quality Gates..."
+                    bash .jenkins/scripts/quality-gate.sh
+                '''
+            }
+        }
+        
+        stage('🔐 Push: Container Registry') {
+            when {
+                branch 'main'
+            }
+            agent any
+            steps {
+                sh '''
+                    echo "🔐 Pushing images to GHCR..."
+                    
+                    echo "${REGISTRY_TOKEN}" | docker login ${REGISTRY} \
+                        -u ${REGISTRY_USER} --password-stdin
+                    
+                    docker push ${API_IMAGE}:${BUILD_VERSION}
+                    docker push ${API_IMAGE}:latest
+                    docker push ${FRONTEND_IMAGE}:${BUILD_VERSION}
+                    docker push ${FRONTEND_IMAGE}:latest
+                    
+                    docker logout ${REGISTRY}
+                    
+                    echo "✅ Images pushed"
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs(deleteDirs: true, patterns: [[pattern: '**/node_modules', type: 'INCLUDE']])
+        }
+        success {
+            sh '''
+                curl -X POST \
+                    -H "Authorization: token ${GH_TOKEN}" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    https://api.github.com/repos/${GH_REPO}/statuses/$(git rev-parse HEAD) \
+                    -d '{"state":"success","context":"Jenkins CI","description":"Build successful"}' || true
+            '''
+        }
+        failure {
+            sh '''
+                curl -X POST \
+                    -H "Authorization: token ${GH_TOKEN}" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    https://api.github.com/repos/${GH_REPO}/statuses/$(git rev-parse HEAD) \
+                    -d '{"state":"failure","context":"Jenkins CI","description":"Build failed"}' || true
+            '''
+        }
+    }
+}

@@ -1,0 +1,96 @@
+version: '3.9'
+
+services:
+  # ====================================
+  # PostgreSQL Database
+  # ====================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: ecom-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-ecom_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ecom_password}
+      POSTGRES_DB: ${DB_NAME:-ecom_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ecom_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecom-network
+    restart: unless-stopped
+
+  # ====================================
+  # Backend API (.NET 8.0)
+  # ====================================
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ecom-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://0.0.0.0:5000
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${DB_NAME:-ecom_db};Username=${DB_USER:-ecom_user};Password=${DB_PASSWORD:-ecom_password};
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-this}
+      ASPNETCORE_HTTPS_PORT: 5001
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ecom-network
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
+
+  # ====================================
+  # Frontend (React + Nginx)
+  # ====================================
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: ecom-frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
+      VITE_ENV: ${ASPNETCORE_ENVIRONMENT:-production}
+    ports:
+      - "3000:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ecom-network
+    restart: unless-stopped
+
+# ====================================
+# Volumes for data persistence
+# ====================================
+volumes:
+  postgres_data:
+    driver: local
+
+# ====================================
+# Networks
+# ====================================
+networks:
+  ecom-network:
+    driver: bridge
