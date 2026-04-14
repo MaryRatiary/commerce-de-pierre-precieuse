@@ -1,0 +1,88 @@
+name: Sign Docker Images with Cosign
+
+on:
+  workflow_run:
+    workflows: ["Backend CI/CD Pipeline", "Frontend CI/CD Pipeline"]
+    types:
+      - completed
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/ecom-api
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/ecom-frontend
+
+jobs:
+  sign-backend:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    name: ✍️ Sign Backend Image
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 🔑 Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✍️ Sign Backend Docker Image
+        run: |
+          echo "Signing backend image: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}"
+          cosign sign --yes \
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        continue-on-error: true
+
+      - name: 📋 Verify Backend Image Signature
+        run: |
+          echo "Verifying backend image signature..."
+          cosign verify --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        continue-on-error: true
+
+  sign-frontend:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    name: ✍️ Sign Frontend Image
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 🔑 Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✍️ Sign Frontend Docker Image
+        run: |
+          echo "Signing frontend image: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}"
+          cosign sign --yes \
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        continue-on-error: true
+
+      - name: 📋 Verify Frontend Image Signature
+        run: |
+          echo "Verifying frontend image signature..."
+          cosign verify --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        continue-on-error: true
