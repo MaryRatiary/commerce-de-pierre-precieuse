@@ -99,7 +99,7 @@ jobs:
   container-scan:
     needs: build
     runs-on: ubuntu-latest
-    name: �� Container Security Scan
+    name: 🐳 Container Security Scan
     permissions:
       contents: read
       security-events: write
